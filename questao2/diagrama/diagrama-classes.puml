@@ -1,0 +1,183 @@
+@startuml questao2
+title Questao 2 - Casa de Leiloes Online (Observer + Strategy + Decorator)
+skinparam classAttributeIconSize 0
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam shadowing false
+hide empty members
+
+package leilao {
+  class Lote <<Subject (Observer) / Context (Strategy)>> {
+    -nome: String
+    -precoInicial: BigDecimal
+    -precoReserva: BigDecimal
+    -estado: Estado
+    +acompanhar(o: ObservadorDeLote)
+    +deixarDeAcompanhar(o: ObservadorDeLote)
+    -notificar(l: Lance)
+    +darLance(l: Licitante, valor: BigDecimal): ResultadoLance
+    +lanceAtual(): BigDecimal
+    +definirRegraComissao(r: RegraComissao)
+    +encerrar(): Optional<Venda>
+  }
+  interface ObservadorDeLote <<Observer>> {
+    +aoReceberLance(lote: Lote, lance: Lance)
+  }
+  interface Licitante {
+    +nome(): String
+  }
+  class Lance <<record>> {
+    +licitante: Licitante
+    +valor: BigDecimal
+  }
+  class ResultadoLance <<record>> {
+    +aceito: boolean
+    +mensagem: String
+  }
+  class Categoria {
+    -nome: String
+    +regraPadrao(): RegraComissao
+  }
+  class Venda {
+    -valor: BigDecimal
+    -regraVigente: RegraComissao
+    +comissao(): BigDecimal
+    +liquidoVendedor(): BigDecimal
+  }
+  enum "Lote.Estado" as Estado {
+    ABERTO
+    VENDIDO
+    NAO_VENDIDO
+  }
+  class ImpressoraDeAcerto <<utility>> {
+    +{static} imprimir(v: Venda)
+  }
+  class Moeda <<utility>>
+}
+
+package "leilao.interessados" {
+  class Participante <<ConcreteObserver>> {
+    -nome: String
+    +aoReceberLance(lote, lance)
+  }
+  class PainelDoLeiloeiro <<ConcreteObserver>> {
+    +aoReceberLance(lote, lance)
+  }
+  class Auditor <<ConcreteObserver>> {
+    +aoReceberLance(lote, lance)
+    +imprimirRegistros()
+  }
+}
+
+package "leilao.comissao" {
+  interface RegraComissao <<Strategy>> {
+    +descricao(): String
+    +calcular(valorVenda: BigDecimal): BigDecimal
+  }
+  class ComissaoArte <<ConcreteStrategy>>
+  class ComissaoVeiculos <<ConcreteStrategy>>
+  class ComissaoImoveis <<ConcreteStrategy>>
+  class ComissaoEletronicos <<ConcreteStrategy>>
+}
+
+package "leilao.fatura" {
+  interface Compra <<Component>> {
+    +lote(): String
+    +valorVenda(): BigDecimal
+    +servicos(): List<ServicoContratado>
+    +total(): BigDecimal
+  }
+  class CompraBasica <<ConcreteComponent>> {
+    -venda: Venda
+  }
+  abstract class ServicoAdicional <<Decorator>> {
+    #compra: Compra
+    #{abstract} descricaoDoServico(): String
+    #{abstract} custoDoServico(): BigDecimal
+  }
+  class SeguroDeTransporte <<ConcreteDecorator>>
+  class CertificadoDeAutenticidade <<ConcreteDecorator>>
+  class EmbalagemEspecial <<ConcreteDecorator>>
+  class EntregaExpressa <<ConcreteDecorator>>
+  class ServicoContratado <<record>> {
+    +descricao: String
+    +custo: BigDecimal
+  }
+  class ImpressoraDeFatura <<utility / Client>> {
+    +{static} imprimir(c: Compra)
+  }
+}
+
+class Main {
+  +{static} main(args: String[])
+}
+
+' ---- Observer ----
+Lote o--> "0..*" ObservadorDeLote : observadores
+Participante ..|> ObservadorDeLote
+Participante ..|> Licitante
+PainelDoLeiloeiro ..|> ObservadorDeLote
+Auditor ..|> ObservadorDeLote
+Lote o--> "0..*" Lance : lances
+Lance --> Licitante
+Lote ..> ResultadoLance : <<create>>
+Lote --> Estado
+Lote --> Categoria
+
+' ---- Strategy ----
+Lote o--> "1" RegraComissao : regraComissao
+Categoria --> RegraComissao : regraPadrao
+ComissaoArte ..|> RegraComissao
+ComissaoVeiculos ..|> RegraComissao
+ComissaoImoveis ..|> RegraComissao
+ComissaoEletronicos ..|> RegraComissao
+Lote ..> Venda : <<create>>
+Venda --> RegraComissao : regraVigente
+Venda --> Licitante : comprador
+ImpressoraDeAcerto ..> Venda
+
+' ---- Decorator ----
+CompraBasica ..|> Compra
+ServicoAdicional ..|> Compra
+ServicoAdicional o--> "1" Compra : compra (envolvida)
+SeguroDeTransporte --|> ServicoAdicional
+CertificadoDeAutenticidade --|> ServicoAdicional
+EmbalagemEspecial --|> ServicoAdicional
+EntregaExpressa --|> ServicoAdicional
+CompraBasica --> Venda
+Compra ..> ServicoContratado
+ImpressoraDeFatura ..> Compra
+
+Main ..> Lote
+Main ..> Participante
+Main ..> PainelDoLeiloeiro
+Main ..> Auditor
+Main ..> ImpressoraDeFatura
+Main ..> ImpressoraDeAcerto
+
+note left of ObservadorDeLote
+  RNF01: Observer. O Lote conhece apenas
+  as interfaces ObservadorDeLote e Licitante.
+  Novo interessado = nova classe que implementa
+  ObservadorDeLote. Quem deu o lance nao e avisado.
+end note
+
+note left of RegraComissao
+  RNF02: Strategy. Sem if/switch por categoria.
+  A regra e trocada em tempo de execucao com
+  Lote.definirRegraComissao(); a Venda fixa a regra
+  vigente no encerramento.
+end note
+
+note left of ServicoAdicional
+  RNF03/RNF04: Decorator. Servicos se combinam por
+  composicao (qualquer ordem/quantidade). A
+  ImpressoraDeFatura so usa a interface Compra.
+end note
+
+note bottom of Main
+  RNF05: os tres mecanismos (Observer, Strategy,
+  Decorator) sao independentes: nenhum pacote de um
+  depende dos outros dois (a fatura so le a Venda).
+end note
+@enduml
