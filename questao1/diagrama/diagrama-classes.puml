@@ -1,0 +1,172 @@
+@startuml questao1
+title Questao 1 - Provisionamento Multinuvem (Abstract Factory + Singleton)
+skinparam classAttributeIconSize 0
+skinparam nodesep 40
+skinparam ranksep 50
+skinparam shadowing false
+hide empty members
+
+package dominio {
+  interface ProvedorFactory <<AbstractFactory>> {
+    +nome(): String
+    +tabelaPrecos(): TabelaPrecos
+    +criarMaquinaVirtual(): MaquinaVirtual
+    +criarArmazenamento(gb: int): Armazenamento
+    +criarFila(): Fila
+  }
+  interface MaquinaVirtual <<AbstractProductA>> {
+    +id(): String
+    +custoPorHora(): BigDecimal
+  }
+  interface Armazenamento <<AbstractProductB>> {
+    +id(): String
+    +gb(): int
+    +custoPorGbMes(): BigDecimal
+  }
+  interface Fila <<AbstractProductC>> {
+    +id(): String
+    +custoMensal(): BigDecimal
+  }
+  class ProvisionadorDeAmbiente <<Client>> {
+    -fabrica: ProvedorFactory
+    +ProvisionadorDeAmbiente(fabrica: ProvedorFactory)
+    +provisionar(s: SolicitacaoAmbiente): Optional<Ambiente>
+  }
+  class Ambiente {
+    -nome: String
+    -provedor: String
+    -regiao: String
+    +custoMensalEstimado(): BigDecimal
+  }
+  class SolicitacaoAmbiente <<record>> {
+    +nome: String
+    +provedor: String
+    +qtdMaquinas: int
+    +gbArmazenamento: int
+  }
+  class TabelaPrecos <<record>> {
+    +vmPorHora: BigDecimal
+    +gbPorMes: BigDecimal
+    +filaPorMes: BigDecimal
+    +custoMensal(qtdVm: int, gb: int): BigDecimal
+  }
+  class CalculoDeCusto <<utility>> {
+    +{static} mensal(...): BigDecimal
+  }
+}
+
+package infra {
+  class Configuracao <<Singleton>> {
+    -Configuracao()
+    +{static} getInstance(): Configuracao
+    +regiaoPadrao(): String
+    +orcamentoMensalMaximo(): BigDecimal
+  }
+  class Auditoria <<Singleton>> {
+    -{static} INSTANCIA: Auditoria
+    -Auditoria()
+    +{static} getInstance(): Auditoria
+    +registrar(ambiente, provedor, resultado, motivo) {synchronized}
+    +historico(): List<RegistroAuditoria> {synchronized}
+    +imprimirHistorico()
+  }
+  class RegistroAuditoria <<record>> {
+    +dataHora: LocalDateTime
+    +ambiente: String
+    +provedor: String
+    +resultado: String
+    +motivo: String
+  }
+}
+
+package aws {
+  class AwsFactory <<ConcreteFactory>>
+  class AwsMaquinaVirtual <<ConcreteProductA>> 
+  class AwsArmazenamento <<ConcreteProductB>>
+  class AwsFila <<ConcreteProductC>>
+}
+
+package azure {
+  class AzureFactory <<ConcreteFactory>>
+  class AzureMaquinaVirtual <<ConcreteProductA>>
+  class AzureArmazenamento <<ConcreteProductB>>
+  class AzureFila <<ConcreteProductC>>
+}
+
+package "(default)" {
+  class SeletorDeProvedor <<escolhe o provedor>> {
+    +{static} obter(provedor: String): ProvedorFactory
+  }
+  class Main {
+    +{static} main(args: String[])
+  }
+}
+
+' Abstract Factory
+AwsFactory ..|> ProvedorFactory
+AzureFactory ..|> ProvedorFactory
+AwsMaquinaVirtual ..|> MaquinaVirtual
+AwsArmazenamento ..|> Armazenamento
+AwsFila ..|> Fila
+AzureMaquinaVirtual ..|> MaquinaVirtual
+AzureArmazenamento ..|> Armazenamento
+AzureFila ..|> Fila
+AwsFactory ..> AwsMaquinaVirtual : <<create>>
+AwsFactory ..> AwsArmazenamento : <<create>>
+AwsFactory ..> AwsFila : <<create>>
+AzureFactory ..> AzureMaquinaVirtual : <<create>>
+AzureFactory ..> AzureArmazenamento : <<create>>
+AzureFactory ..> AzureFila : <<create>>
+ProvedorFactory ..> MaquinaVirtual
+ProvedorFactory ..> Armazenamento
+ProvedorFactory ..> Fila
+ProvedorFactory ..> TabelaPrecos
+
+' Cliente
+ProvisionadorDeAmbiente o--> ProvedorFactory : fabrica
+ProvisionadorDeAmbiente ..> SolicitacaoAmbiente
+ProvisionadorDeAmbiente ..> Ambiente : <<create>>
+ProvisionadorDeAmbiente ..> Configuracao : usa
+ProvisionadorDeAmbiente ..> Auditoria : usa
+Ambiente o--> "1..*" MaquinaVirtual
+Ambiente o--> "1" Armazenamento
+Ambiente o--> "1" Fila
+Ambiente ..> CalculoDeCusto
+TabelaPrecos ..> CalculoDeCusto
+
+' Singletons
+Auditoria *--> "0..*" RegistroAuditoria
+
+' Selecao do provedor
+SeletorDeProvedor ..> AwsFactory : <<create>>
+SeletorDeProvedor ..> AzureFactory : <<create>>
+SeletorDeProvedor ..> ProvedorFactory
+Main ..> SeletorDeProvedor
+Main ..> ProvisionadorDeAmbiente
+Main ..> Auditoria
+
+note left of ProvedorFactory
+  RNF01/RNF02/RNF03: Abstract Factory.
+  Uma fabrica por provedor cria a familia
+  completa (VM, armazenamento, fila), entao
+  nao ha mistura de provedores. Novo provedor
+  (Gcp) = so classes novas + 1 linha no Seletor.
+end note
+
+note bottom of Configuracao
+  RNF04: Singleton. Le config.properties
+  uma unica vez (Initialization-on-demand holder).
+end note
+
+note bottom of Auditoria
+  RNF05: Singleton thread-safe. Operacoes
+  synchronized preservam ordem e integridade
+  com provisionamentos simultaneos.
+end note
+
+note bottom of AwsMaquinaVirtual
+  Classes concretas de recurso tem
+  visibilidade de pacote (RNF06): so a
+  propria fabrica do provedor as instancia.
+end note
+@enduml
